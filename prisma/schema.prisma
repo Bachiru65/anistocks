@@ -1,0 +1,208 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SeriesType {
+  ANIME
+  MANGA
+  OTHER
+}
+
+enum MarketCategory {
+  EPISODES
+  CHAPTERS
+  ADAPTATIONS
+  CHARACTERS
+  COMMUNITY
+  OTHER
+}
+
+enum MarketType {
+  YES_NO
+  MULTIPLE_CHOICE
+  NUMERIC
+}
+
+enum MarketStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  RESOLVED
+  CANCELLED
+}
+
+enum BetSide {
+  YES
+  NO
+  OPTION
+}
+
+enum BetStatus {
+  OPEN
+  WON
+  LOST
+  REFUNDED
+  CANCELLED
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+}
+
+enum TransactionReason {
+  DEPOSIT
+  BET_PLACED
+  BET_PAYOUT
+  BET_REFUND
+  ADJUSTMENT
+}
+
+model User {
+  id              String                @id @default(cuid())
+  username        String                @unique
+  email           String                @unique
+  passwordHash    String
+  role            UserRole              @default(USER)
+  avatarUrl       String?
+  bio             String?
+  preferredSeries String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  wallet          Wallet?
+  markets         Market[]              @relation("UserMarkets")
+  bets            Bet[]
+  transactions    Transaction[]
+  resolutionLog   MarketResolutionLog[] @relation("ResolutionActors")
+}
+
+model Wallet {
+  id            String        @id @default(cuid())
+  userId        String        @unique
+  balanceTokens Decimal       @default(10000) @db.Decimal(18, 2)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id])
+  transactions  Transaction[]
+}
+
+model Series {
+  id        String     @id @default(cuid())
+  title     String
+  type      SeriesType @default(OTHER)
+  malId     String?
+  anilistId String?
+  synopsis  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  markets   Market[]
+}
+
+model Market {
+  id                 String         @id @default(cuid())
+  title              String
+  description        String?
+  category           MarketCategory @default(OTHER)
+  marketType         MarketType
+  resolutionDeadline DateTime
+  status             MarketStatus   @default(OPEN)
+  isApproved         Boolean        @default(false)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  totalStake         Decimal        @default(0) @db.Decimal(18, 2)
+  resolvedYes        Boolean?
+  resolvedOutcomeId  String?
+  resolvedNumeric    Decimal?       @db.Decimal(18, 4)
+  resolutionNote     String?
+  createdById        String
+  relatedSeriesId    String?
+
+  createdBy      User                  @relation("UserMarkets", fields: [createdById], references: [id])
+  relatedSeries  Series?               @relation(fields: [relatedSeriesId], references: [id])
+  options        MarketOption[]
+  bets           Bet[]
+  resolutionLogs MarketResolutionLog[]
+
+  @@index([status, category])
+  @@index([relatedSeriesId])
+  @@index([resolutionDeadline])
+}
+
+model MarketOption {
+  id        String   @id @default(cuid())
+  label     String
+  order     Int      @default(0)
+  marketId  String
+  createdAt DateTime @default(now())
+
+  market Market @relation(fields: [marketId], references: [id])
+  bets   Bet[]
+
+  @@index([marketId])
+}
+
+model Bet {
+  id            String    @id @default(cuid())
+  userId        String
+  marketId      String
+  optionId      String?
+  side          BetSide?
+  amountTokens  Decimal   @db.Decimal(18, 2)
+  impliedOdds   Decimal?  @db.Decimal(8, 4)
+  status        BetStatus @default(OPEN)
+  payoutAwarded Decimal?  @db.Decimal(18, 2)
+  placedAt      DateTime  @default(now())
+  settledAt     DateTime?
+
+  user   User          @relation(fields: [userId], references: [id])
+  market Market        @relation(fields: [marketId], references: [id])
+  option MarketOption? @relation(fields: [optionId], references: [id])
+
+  @@index([userId])
+  @@index([marketId])
+}
+
+model Transaction {
+  id           String            @id @default(cuid())
+  userId       String
+  walletId     String
+  type         TransactionType
+  reason       TransactionReason
+  amountTokens Decimal           @db.Decimal(18, 2)
+  balanceAfter Decimal           @db.Decimal(18, 2)
+  description  String?
+  createdAt    DateTime          @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([userId])
+  @@index([walletId])
+}
+
+model MarketResolutionLog {
+  id          String   @id @default(cuid())
+  marketId    String
+  resolvedBy  String
+  outcomeNote String?
+  createdAt   DateTime @default(now())
+
+  market   Market @relation(fields: [marketId], references: [id])
+  resolver User   @relation("ResolutionActors", fields: [resolvedBy], references: [id])
+}
