@@ -2,14 +2,17 @@ import { MarketCard } from "@/components/market-card";
 import { listMarkets } from "@/modules/markets/service";
 import type { ListMarketsInput } from "@/modules/markets/schema";
 
+export const dynamic = "force-dynamic";
+
 type Props = {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
 const categories = ["ALL", "EPISODES", "CHAPTERS", "ADAPTATIONS", "COMMUNITY"];
 
 export default async function MarketsPage({ searchParams }: Props) {
-  const category = typeof searchParams.category === "string" ? searchParams.category : undefined;
+  const resolvedSearch = await searchParams;
+  const category = typeof resolvedSearch.category === "string" ? resolvedSearch.category : undefined;
   const markets = await listMarkets({
     category: category && category !== "ALL" ? (category as ListMarketsInput["category"]) : undefined,
     sort: "closingSoon",
