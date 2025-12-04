@@ -15,14 +15,27 @@ const Decimal = Prisma.Decimal;
 const START_BALANCE = new Decimal(process.env.SEED_STARTING_BALANCE ?? 10000);
 
 async function main() {
-  const adminPassword = await hashPassword("admin1234");
+  const adminEmail = "monkeypaws65@gmail.com";
+  const adminPasswordPlain = "babasaur34";
+  const adminPassword = await hashPassword(adminPasswordPlain);
   const demoPassword = await hashPassword("demo1234");
 
+  // Clean up any old admin test accounts
+  await prisma.user.deleteMany({
+    where: {
+      role: "ADMIN",
+      email: { not: adminEmail },
+    },
+  });
+
   const admin = await prisma.user.upsert({
-    where: { email: "admin@otakumarkets.test" },
-    update: {},
+    where: { email: adminEmail },
+    update: {
+      passwordHash: adminPassword,
+      username: "admin-user",
+    },
     create: {
-      email: "admin@otakumarkets.test",
+      email: adminEmail,
       username: "admin-user",
       passwordHash: adminPassword,
       role: "ADMIN",
