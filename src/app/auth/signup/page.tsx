@@ -75,7 +75,6 @@ export default function SignupPage() {
         </button>
       </form>
       {message ? <p className="text-sm text-amber-200">{message}</p> : null}
-      <p className="text-xs text-slate-400">You will receive 10,000 demo tokens on signup.</p>
     </div>
   );
 }

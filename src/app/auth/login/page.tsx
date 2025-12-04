@@ -64,9 +64,6 @@ export default function LoginPage() {
         </button>
       </form>
       {message ? <p className="text-sm text-amber-200">{message}</p> : null}
-      <p className="text-xs text-slate-400">
-        Demo: demo@otakumarkets.test / demo1234 | Admin: admin@otakumarkets.test / admin1234
-      </p>
     </div>
   );
 }
