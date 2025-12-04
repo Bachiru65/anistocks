@@ -65,9 +65,18 @@ export function Navbar({ currentUser }: NavbarProps) {
         </nav>
         {currentUser ? (
           <div className="flex items-center gap-3 text-sm text-slate-200">
-            <span className="hidden sm:block text-slate-300">
-              {currentUser.balance ? `${currentUser.balance} tok` : ""} · {currentUser.username}
-            </span>
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 transition hover:border-white/30 hover:text-white"
+            >
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-xs font-bold uppercase text-white">
+                {currentUser.username.slice(0, 2)}
+              </span>
+              <span className="hidden sm:block text-left">
+                <span className="block font-semibold text-white">{currentUser.username}</span>
+                <span className="text-[11px] text-slate-300">{currentUser.balance ? `${currentUser.balance} tok` : ""}</span>
+              </span>
+            </Link>
             <button
               onClick={logout}
               disabled={busy}

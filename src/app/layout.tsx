@@ -5,6 +5,8 @@ import { Navbar } from "@/components/navbar";
 import { getSessionFromRequest } from "@/lib/session";
 import { getProfile } from "@/modules/auth/service";
 
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
