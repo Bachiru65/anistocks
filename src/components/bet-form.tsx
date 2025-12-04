@@ -6,9 +6,10 @@ type BetFormProps = {
   marketId: string;
   marketType: "YES_NO" | "MULTIPLE_CHOICE" | "NUMERIC";
   options: { id: string; label: string }[];
+  isAuthed?: boolean;
 };
 
-export function BetForm({ marketId, marketType, options }: BetFormProps) {
+export function BetForm({ marketId, marketType, options, isAuthed }: BetFormProps) {
   const [amount, setAmount] = useState(100);
   const [side, setSide] = useState<"YES" | "NO">("YES");
   const [optionId, setOptionId] = useState<string | undefined>(options[0]?.id);
@@ -23,6 +24,7 @@ export function BetForm({ marketId, marketType, options }: BetFormProps) {
         marketType === "MULTIPLE_CHOICE" ? { amount, optionId } : { amount, side };
       const res = await fetch(`/api/markets/${marketId}/bet`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -105,10 +107,10 @@ export function BetForm({ marketId, marketType, options }: BetFormProps) {
       </div>
       <button
         type="submit"
-        disabled={isPending}
+        disabled={isPending || !isAuthed}
         className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-pink-500 px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:from-indigo-400 hover:to-pink-400 disabled:opacity-60"
       >
-        {isPending ? "Placing..." : "Place bet"}
+        {isAuthed ? (isPending ? "Placing..." : "Place bet") : "Log in to bet"}
       </button>
       {message ? <p className="text-sm text-amber-200">{message}</p> : null}
     </form>

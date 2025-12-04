@@ -2,6 +2,7 @@ import { BetForm } from "@/components/bet-form";
 import { MarketChart } from "@/components/market-chart";
 import { MarketCard } from "@/components/market-card";
 import { AppError } from "@/lib/errors";
+import { getSessionFromRequest } from "@/lib/session";
 import { getMarketById } from "@/modules/markets/service";
 import Link from "next/link";
 
@@ -11,6 +12,7 @@ export default async function MarketDetailPage({ params }: Params) {
   const { id } = await params;
   if (!id) throw new AppError("VALIDATION_ERROR", "Market id required", 400);
   const market = await getMarketById(id);
+  const session = await getSessionFromRequest();
   const related = market.relatedSeries;
 
   return (
@@ -45,6 +47,7 @@ export default async function MarketDetailPage({ params }: Params) {
             marketId={market.id}
             marketType={market.marketType as "YES_NO" | "MULTIPLE_CHOICE" | "NUMERIC"}
             options={market.options.map((o) => ({ id: o.id, label: o.label }))}
+            isAuthed={!!session}
           />
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-slate-300">
             <p className="font-semibold text-white">Resolution</p>
