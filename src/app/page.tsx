@@ -3,8 +3,12 @@ import { Hero } from "@/components/hero";
 import { MarketCard } from "@/components/market-card";
 import { listMarkets } from "@/modules/markets/service";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
-  const markets = await listMarkets({ sort: "closingSoon", take: 6, skip: 0 });
+  const markets = await listMarkets({ sort: "closingSoon", take: 20, skip: 0 });
+  const displayMarkets =
+    markets.length >= 12 ? markets : [...markets, ...markets, ...markets].slice(0, 12);
 
   return (
     <div className="space-y-8">
@@ -20,9 +24,9 @@ export default async function Home() {
           </Link>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          {markets.map((market) => (
+          {displayMarkets.map((market, idx) => (
             <MarketCard
-              key={market.id}
+              key={`${market.id}-${idx}`}
               id={market.id}
               title={market.title}
               description={market.description}
