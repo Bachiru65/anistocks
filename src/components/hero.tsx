@@ -1,6 +1,10 @@
 import Link from "next/link";
 
-export function Hero() {
+type HeroProps = {
+  user?: { username: string; balance?: string };
+};
+
+export function Hero({ user }: HeroProps) {
   return (
     <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-6 py-12 shadow-2xl sm:px-10 sm:py-16">
       <div className="absolute -left-10 -top-10 h-40 w-40 rounded-full bg-pink-500/30 blur-3xl" />
@@ -11,10 +15,21 @@ export function Hero() {
             Anime & Manga Predictions
           </div>
           <h1 className="text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
-            Trade the future of your favorite series.
-            <span className="block bg-gradient-to-r from-indigo-200 via-pink-200 to-cyan-200 bg-clip-text text-transparent">
-              OtakuMarkets
-            </span>
+            {user ? (
+              <>
+                Welcome back, {user.username}.
+                <span className="block bg-gradient-to-r from-indigo-200 via-pink-200 to-cyan-200 bg-clip-text text-transparent">
+                  Ready for the next call?
+                </span>
+              </>
+            ) : (
+              <>
+                Trade the future of your favorite series.
+                <span className="block bg-gradient-to-r from-indigo-200 via-pink-200 to-cyan-200 bg-clip-text text-transparent">
+                  OtakuMarkets
+                </span>
+              </>
+            )}
           </h1>
           <p className="max-w-xl text-base text-slate-200 sm:text-lg">
             Stake demo tokens on anime and manga outcomes, track probabilities, and settle disputes with transparent
@@ -27,13 +42,30 @@ export function Hero() {
             >
               Browse markets
             </Link>
-            <Link
-              href="/auth/signup"
-              className="rounded-lg border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
-            >
-              Create an account
-            </Link>
+            {user ? (
+              <Link
+                href="/profile"
+                className="rounded-lg border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
+              >
+                View positions
+              </Link>
+            ) : (
+              <Link
+                href="/auth/signup"
+                className="rounded-lg border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
+              >
+                Create an account
+              </Link>
+            )}
           </div>
+          {user?.balance ? (
+            <div className="flex items-center gap-2 text-sm text-slate-200">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs uppercase tracking-wide text-indigo-100">
+                Balance
+              </span>
+              <span className="font-semibold text-white">{user.balance} demo tokens</span>
+            </div>
+          ) : null}
         </div>
         <div className="relative rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
           <div className="flex items-center justify-between text-sm text-slate-200">
