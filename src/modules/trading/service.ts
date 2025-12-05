@@ -1,4 +1,4 @@
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { SessionPayload } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
