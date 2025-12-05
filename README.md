@@ -52,5 +52,10 @@ Anime & manga-focused prediction markets inspired by Polymarket flows. Users sta
 ## Deployment
 See `docs/deployment.md` for environment variables and steps. Vercel + a managed Postgres (Railway/Render/Neon) is the target combo.
 
+### Required env vars
+- `DATABASE_URL` (must be set in Vercel/hosting; a placeholder is used only to allow builds)
+- `AUTH_SECRET`
+- `BASE_URL`
+
 ## Usage Policy
 This repository is provided for review and collaboration. Self-hosting or public deployment by third parties is not permitted without explicit permission. Reach out to the maintainer before any external hosting or redistribution.

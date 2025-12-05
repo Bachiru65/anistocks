@@ -3,6 +3,10 @@
 import "dotenv/config";
 import { defineConfig, env } from "prisma/config";
 
+// Provide a safe default for build-time generation; override with real DATABASE_URL in env.
+const databaseUrl =
+  env("DATABASE_URL", null) ?? "postgresql://placeholder:placeholder@localhost:5432/postgres";
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -10,6 +14,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: env("DATABASE_URL"),
+    url: databaseUrl,
   },
 });
