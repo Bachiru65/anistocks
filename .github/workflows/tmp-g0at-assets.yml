@@ -11,61 +11,164 @@ permissions:
 jobs:
   fetch-assets:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Install fetch tools
-        run: python -m pip install --upgrade yt-dlp requests
-      - name: Fetch exact song and archival material
+
+      - name: Install current media tools
         shell: bash
         run: |
-          set -euxo pipefail
-          mkdir -p edit-assets/loc
+          python -m pip install --upgrade 'yt-dlp[default]' bgutil-ytdlp-pot-provider requests numpy scipy pillow
+          git clone --depth 1 --branch 1.3.1 https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$HOME/bgutil-ytdlp-pot-provider"
+          cd "$HOME/bgutil-ytdlp-pot-provider/server"
+          npm ci
+          npx tsc
+
+      - name: Start PO-token provider
+        shell: bash
+        run: |
+          cd "$HOME/bgutil-ytdlp-pot-provider/server"
+          nohup node build/main.js > "$RUNNER_TEMP/bgutil.log" 2>&1 &
+          for n in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4416/ping && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/bgutil.log"
+          exit 1
+
+      - name: Fetch exact audio with independent fallbacks
+        id: audio
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p edit-assets/logs
           URL='https://www.youtube.com/watch?v=6OiljO_Cj0A'
-          if ! yt-dlp --js-runtimes node --remote-components ejs:github --no-playlist \
-            -f 'bestaudio[ext=m4a]/bestaudio' -o 'edit-assets/song_source.%(ext)s' "$URL"; then
-            python - <<'PY'
-          import json, pathlib, requests, sys
-          video_id = '6OiljO_Cj0A'
-          bases = ['https://pipedapi.adminforge.de','https://pipedapi.private.coffee','https://pipedapi.reallyaweso.me','https://pipedapi.kavin.rocks']
-          out = pathlib.Path('edit-assets/song_source.m4a')
+
+          yt-dlp -v --no-playlist --js-runtimes node --remote-components ejs:github \
+            --extractor-args 'youtube:player_client=mweb,web_safari,android_vr;fetch_pot=always' \
+            -f 'bestaudio[ext=m4a]/bestaudio/best' \
+            -o 'edit-assets/song_source.%(ext)s' "$URL" \
+            > edit-assets/logs/yt_dlp_pot.log 2>&1
+
+          if ! find edit-assets -maxdepth 1 -name 'song_source.*' -type f -size +500k | grep -q .; then
+            yt-dlp -v --no-playlist --js-runtimes node --remote-components ejs:github \
+              --extractor-args 'youtube:player_client=web_safari' \
+              -f 'bestaudio/best' -o 'edit-assets/song_source.%(ext)s' "$URL" \
+              > edit-assets/logs/yt_dlp_safari.log 2>&1
+          fi
+
+          if ! find edit-assets -maxdepth 1 -name 'song_source.*' -type f -size +500k | grep -q .; then
+            python - <<'PY' > edit-assets/logs/alternative_apis.log 2>&1
+          import json, pathlib, requests, sys, urllib.parse
+          vid='6OiljO_Cj0A'
+          out=pathlib.Path('edit-assets/song_source.m4a')
           errors=[]
-          for base in bases:
+          piped=['https://pipedapi.adminforge.de','https://pipedapi.private.coffee','https://pipedapi.reallyaweso.me','https://pipedapi.kavin.rocks','https://pipedapi.leptons.xyz']
+          for base in piped:
               try:
-                  d=requests.get(f'{base}/streams/{video_id}',timeout=45).json()
-                  ss=sorted([s for s in d.get('audioStreams',[]) if s.get('url')],key=lambda s:int(s.get('bitrate') or 0),reverse=True)
-                  if not ss: raise RuntimeError('no streams')
-                  with requests.get(ss[0]['url'],stream=True,timeout=180) as r:
-                      r.raise_for_status()
+                  r=requests.get(f'{base}/streams/{vid}',timeout=35); r.raise_for_status(); d=r.json()
+                  streams=sorted([s for s in d.get('audioStreams',[]) if s.get('url')],key=lambda s:int(s.get('bitrate') or 0),reverse=True)
+                  if not streams: raise RuntimeError('no streams')
+                  with requests.get(streams[0]['url'],stream=True,timeout=150) as m:
+                      m.raise_for_status()
                       with out.open('wb') as f:
-                          for c in r.iter_content(1024*1024):
+                          for c in m.iter_content(1024*1024):
                               if c:f.write(c)
-                  if out.stat().st_size < 500000: raise RuntimeError('small response')
-                  pathlib.Path('edit-assets/piped_metadata.json').write_text(json.dumps(d,ensure_ascii=False,indent=2))
-                  sys.exit(0)
+                  if out.stat().st_size<500000: raise RuntimeError('small media response')
+                  pathlib.Path('edit-assets/audio_source.json').write_text(json.dumps({'method':'piped','instance':base,'stream':streams[0]},ensure_ascii=False,indent=2))
+                  print('SUCCESS PIPED',base,out.stat().st_size); sys.exit(0)
               except Exception as e:
-                  errors.append(f'{base}: {e}')
-                  if out.exists():out.unlink()
-          raise SystemExit('\n'.join(errors))
+                  errors.append(f'PIPED {base}: {e}')
+                  if out.exists(): out.unlink()
+
+          try:
+              instances=requests.get('https://api.invidious.io/instances.json?sort_by=health',timeout=40).json()
+              hosts=[]
+              for host,meta in instances:
+                  if meta.get('api') and meta.get('type')=='https': hosts.append('https://'+host)
+              for base in hosts[:20]:
+                  try:
+                      r=requests.get(f'{base}/api/v1/videos/{vid}',timeout=25); r.raise_for_status(); d=r.json()
+                      fs=[x for x in d.get('adaptiveFormats',[]) if x.get('url') and str(x.get('type','')).startswith('audio/')]
+                      fs.sort(key=lambda x:int(x.get('bitrate') or 0),reverse=True)
+                      if not fs: raise RuntimeError('no adaptive audio')
+                      with requests.get(fs[0]['url'],stream=True,timeout=150) as m:
+                          m.raise_for_status()
+                          with out.open('wb') as f:
+                              for c in m.iter_content(1024*1024):
+                                  if c:f.write(c)
+                      if out.stat().st_size<500000: raise RuntimeError('small media response')
+                      pathlib.Path('edit-assets/audio_source.json').write_text(json.dumps({'method':'invidious','instance':base,'stream':fs[0]},ensure_ascii=False,indent=2))
+                      print('SUCCESS INVIDIOUS',base,out.stat().st_size); sys.exit(0)
+                  except Exception as e:
+                      errors.append(f'INVIDIOUS {base}: {e}')
+                      if out.exists(): out.unlink()
+          except Exception as e: errors.append(f'INVIDIOUS LIST: {e}')
+          print('\n'.join(errors))
+          sys.exit(1)
           PY
           fi
-          SRC=$(find edit-assets -maxdepth 1 -name 'song_source.*' -type f | head -n1)
-          ffmpeg -y -i "$SRC" -vn -ac 2 -ar 48000 -c:a pcm_s16le edit-assets/song_full.wav
-          ffprobe -v error -show_entries format=duration -of json edit-assets/song_full.wav > edit-assets/song_probe.json
-          curl -L --fail --retry 3 'https://archive.org/download/FromDawn1937_3/FromDawn1937_3_512kb.mp4' -o edit-assets/from_dawn_part3.mp4
-          python - <<'PY'
+
+          if ! find edit-assets -maxdepth 1 -name 'song_source.*' -type f -size +500k | grep -q .; then
+            python - <<'PY' > edit-assets/logs/official_previews.log 2>&1
+          import json,pathlib,requests,sys
+          out=pathlib.Path('edit-assets/song_preview.m4a')
+          errors=[]
+          try:
+              d=requests.get('https://itunes.apple.com/lookup?id=6790846261&country=NL',timeout=45).json()
+              row=next(x for x in d.get('results',[]) if x.get('wrapperType')=='track')
+              u=row.get('previewUrl')
+              if not u: raise RuntimeError('Apple returned no previewUrl')
+              m=requests.get(u,timeout=120); m.raise_for_status(); out.write_bytes(m.content)
+              if out.stat().st_size<300000: raise RuntimeError('Apple preview too small')
+              pathlib.Path('edit-assets/audio_source.json').write_text(json.dumps({'method':'apple_preview','metadata':row},ensure_ascii=False,indent=2))
+              print('SUCCESS APPLE PREVIEW',out.stat().st_size); sys.exit(0)
+          except Exception as e: errors.append('APPLE: '+str(e))
+          try:
+              q='artist:"g0at" track:"Люблю"'
+              d=requests.get('https://api.deezer.com/search',params={'q':q},timeout=45).json()
+              row=d['data'][0]; u=row['preview']
+              m=requests.get(u,timeout=120); m.raise_for_status(); out.write_bytes(m.content)
+              if out.stat().st_size<300000: raise RuntimeError('Deezer preview too small')
+              pathlib.Path('edit-assets/audio_source.json').write_text(json.dumps({'method':'deezer_preview','metadata':row},ensure_ascii=False,indent=2))
+              print('SUCCESS DEEZER PREVIEW',out.stat().st_size); sys.exit(0)
+          except Exception as e: errors.append('DEEZER: '+str(e))
+          print('\n'.join(errors)); sys.exit(1)
+          PY
+          fi
+
+          SRC=$(find edit-assets -maxdepth 1 -type f \( -name 'song_source.*' -o -name 'song_preview.*' \) -size +300k | head -n1)
+          if [ -n "$SRC" ]; then
+            ffmpeg -y -i "$SRC" -vn -ac 2 -ar 48000 -c:a pcm_s16le edit-assets/song_full.wav > edit-assets/logs/ffmpeg_audio.log 2>&1
+            ffprobe -v error -show_entries format=duration:format_tags=title,artist -of json edit-assets/song_full.wav > edit-assets/song_probe.json
+            echo success > edit-assets/AUDIO_STATUS.txt
+          else
+            echo failure > edit-assets/AUDIO_STATUS.txt
+            exit 1
+          fi
+
+      - name: Fetch public-domain visual sources and make proxies
+        id: visuals
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p edit-assets/loc edit-assets/logs edit-assets/proxies
+          curl -L --fail --retry 3 'https://archive.org/download/FromDawn1937_3/FromDawn1937_3_512kb.mp4' -o edit-assets/from_dawn_part3.mp4 > edit-assets/logs/from_dawn.log 2>&1
+          python - <<'PY' > edit-assets/logs/master_hands.log 2>&1
           import json,pathlib,requests
           ident='masterhandscomplete4kh264'
           d=requests.get(f'https://archive.org/metadata/{ident}',timeout=60).json()
           c=[]
           for f in d.get('files',[]):
               n=f.get('name','')
-              if n.lower().endswith('.mp4'):
+              if n.lower().endswith(('.mp4','.m4v')):
                   try:s=int(f.get('size') or 0)
                   except:s=0
-                  if 3000000 < s < 450000000:c.append((s,n))
-          s,n=sorted(c)[0]
-          u=f'https://archive.org/download/{ident}/{requests.utils.quote(n)}'
+                  if 3_000_000<s<180_000_000:c.append((s,n))
+          if not c: raise RuntimeError('no moderate-size derivative')
+          s,n=sorted(c)[0]; u=f'https://archive.org/download/{ident}/{requests.utils.quote(n)}'
           with requests.get(u,stream=True,timeout=240) as r:
               r.raise_for_status()
               with open('edit-assets/master_hands.mp4','wb') as h:
@@ -82,8 +185,23 @@ jobs:
             'https://cdn.loc.gov/service/pnp/cph/3b40000/3b48000/3b48900/3b48999v.jpg'
           )
           i=1; for u in "${urls[@]}"; do curl -L --fail --retry 2 "$u" -o "edit-assets/loc/loc_${i}.jpg" || true; i=$((i+1)); done
-          find edit-assets -maxdepth 2 -type f -printf '%P\t%s bytes\n' | sort > edit-assets/FILELIST.txt
-      - name: Upload bundle
+          for src in edit-assets/from_dawn_part3.mp4 edit-assets/master_hands.mp4; do
+            [ -s "$src" ] || continue
+            base=$(basename "$src" .mp4)
+            ffmpeg -y -ss 0 -i "$src" -t 18 -vf 'fps=6,scale=480:-2' -an -c:v libx264 -crf 27 -preset veryfast "edit-assets/proxies/${base}_proxy.mp4" >/dev/null 2>&1
+            ffmpeg -y -i "$src" -vf "fps=1/30,scale=320:-2,tile=4x4" -frames:v 1 "edit-assets/proxies/${base}_contact.jpg" >/dev/null 2>&1
+          done
+          find edit-assets -maxdepth 3 -type f -printf '%P\t%s bytes\n' | sort > edit-assets/FILELIST.txt
+
+      - name: Save provider log
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p edit-assets/logs
+          cp "$RUNNER_TEMP/bgutil.log" edit-assets/logs/bgutil.log || true
+
+      - name: Upload diagnostic and source bundle
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: g0at-edit-assets
