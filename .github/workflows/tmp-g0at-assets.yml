@@ -1,4 +1,4 @@
-name: Temporary archive identifier lookup
+name: Temporary confirmed archive fetch
 
 on:
   pull_request:
@@ -9,35 +9,27 @@ permissions:
   contents: read
 
 jobs:
-  lookup:
+  fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Search Internet Archive metadata
+      - name: Fetch confirmed archive derivatives
         shell: bash
         run: |
-          mkdir -p lookup
-          python - <<'PY'
-          import json,urllib.parse,urllib.request,pathlib
-          queries=[
-            'title:"From Dawn to Sunset (Part I)"',
-            'title:"From Dawn to Sunset (Part II)"',
-            'title:"From Dawn to Sunset" AND year:1937',
-            'identifier:FromDawn*'
-          ]
-          all_results=[]
-          for q in queries:
-              params=urllib.parse.urlencode([('q',q),('fl[]','identifier'),('fl[]','title'),('fl[]','date'),('fl[]','mediatype'),('rows','100'),('page','1'),('output','json')])
-              url='https://archive.org/advancedsearch.php?'+params
-              with urllib.request.urlopen(url,timeout=60) as r: d=json.load(r)
-              docs=d.get('response',{}).get('docs',[])
-              all_results.append({'query':q,'url':url,'docs':docs})
-          pathlib.Path('lookup/results.json').write_text(json.dumps(all_results,indent=2))
-          PY
-      - name: Upload lookup
+          set -euxo pipefail
+          mkdir -p visual-assets
+          curl -L --fail --retry 4 --retry-delay 2 \
+            'https://archive.org/download/FromDawn1937/FromDawn1937_512kb.mp4' \
+            -o visual-assets/from_dawn_part1.mp4
+          curl -L --fail --retry 4 --retry-delay 2 \
+            'https://archive.org/download/FromDawn1937_2/FromDawn1937_2_512kb.mp4' \
+            -o visual-assets/from_dawn_part2.mp4 || true
+          find visual-assets -type f -printf '%P\t%s bytes\n' | sort > visual-assets/FILELIST.txt
+      - name: Upload footage
         uses: actions/upload-artifact@v4
         with:
-          name: archive-lookup
-          path: lookup
+          name: confirmed-factory-footage
+          path: visual-assets
+          compression-level: 0
           retention-days: 1
